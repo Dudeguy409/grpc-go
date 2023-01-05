@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"time"
 
 	"google.golang.org/grpc"
 	pb "google.golang.org/grpc/examples/helloworld/helloworld"
@@ -33,7 +34,8 @@ import (
 )
 
 var (
-	port = flag.Int("port", 50051, "The server port")
+	port       = flag.Int("port", 50051, "The server port")
+	unreliable = flag.Bool("unreliable", false, "toggles serving status every 5 seconds")
 )
 
 // server is used to implement helloworld.GreeterServer.
@@ -60,10 +62,29 @@ func main() {
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthServer.SetServingStatus(pb.Greeter_ServiceDesc.ServiceName, healthpb.HealthCheckResponse_SERVING)
 
+	if *unreliable {
+		go toggleServingStatus(healthServer)
+	}
+
 	pb.RegisterGreeterServer(s, &server{})
 	healthpb.RegisterHealthServer(s, healthServer)
 	log.Printf("server listening at %v", lis.Addr())
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
+	}
+}
+
+func toggleServingStatus(healthServer *health.Server) {
+	for {
+		status := healthpb.HealthCheckResponse_SERVING
+		// Check if user Service is valid
+		if time.Now().Second()%2 == 0 {
+			status = healthpb.HealthCheckResponse_NOT_SERVING
+		}
+
+		healthServer.SetServingStatus(pb.Greeter_ServiceDesc.ServiceName, status)
+		healthServer.SetServingStatus("", status)
+
+		time.Sleep(5 * time.Second)
 	}
 }
